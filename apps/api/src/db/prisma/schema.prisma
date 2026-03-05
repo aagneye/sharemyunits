@@ -1,0 +1,215 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BUYER
+  HOST
+  ADMIN
+}
+
+enum GPUStatus {
+  AVAILABLE
+  IN_USE
+  OFFLINE
+  MAINTENANCE
+}
+
+enum VMStatus {
+  PROVISIONING
+  RUNNING
+  STOPPED
+  TERMINATED
+  FAILED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum RentalStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String?
+  role          UserRole  @default(BUYER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  ownedGPUs     GPU[]
+  rentals       Rental[]
+  payments      Payment[]
+  sshKeys       SSHKey[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model GPU {
+  id              String     @id @default(cuid())
+  hostId          String
+  name            String
+  model           String
+  vramGB          Int
+  cudaCores       Int?
+  memoryBandwidth Float?
+  baseClockMHz    Float?
+  boostClockMHz   Float?
+  pricePerHourUSD Float
+  status          GPUStatus  @default(AVAILABLE)
+  hostIP          String     // IP of the GPU host machine
+  proxmoxNode     String?    // Proxmox node name
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  host            User       @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  rentals         Rental[]
+  metrics         GPUMetric[]
+
+  @@index([hostId])
+  @@index([status])
+}
+
+model GPUMetric {
+  id          String   @id @default(cuid())
+  gpuId       String
+  utilization Float    // 0-100
+  temperature Float    // Celsius
+  vramUsedGB  Float
+  powerDrawW  Float?
+  timestamp   DateTime @default(now())
+
+  gpu         GPU      @relation(fields: [gpuId], references: [id], onDelete: Cascade)
+
+  @@index([gpuId, timestamp])
+}
+
+model VM {
+  id              String    @id @default(cuid())
+  rentalId        String    @unique
+  gpuId           String
+  vmName          String    // Proxmox VM name
+  vmId            Int?      // Proxmox VM ID
+  ipAddress       String?
+  sshPort         Int       @default(22)
+  status          VMStatus  @default(PROVISIONING)
+  provisionedAt   DateTime?
+  terminatedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  rental          Rental    @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  gpu             GPU       @relation(fields: [gpuId], references: [id])
+
+  @@index([rentalId])
+  @@index([gpuId])
+  @@index([status])
+}
+
+model Rental {
+  id              String        @id @default(cuid())
+  buyerId         String
+  gpuId           String
+  startTime       DateTime
+  endTime         DateTime
+  status          RentalStatus  @default(ACTIVE)
+  totalCostUSD    Float
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  buyer           User          @relation(fields: [buyerId], references: [id])
+  gpu             GPU           @relation(fields: [gpuId], references: [id])
+  vm              VM?
+  payment         Payment?
+  billingRecords  BillingRecord[]
+
+  @@index([buyerId])
+  @@index([gpuId])
+  @@index([status])
+  @@index([startTime, endTime])
+}
+
+model BillingRecord {
+  id          String   @id @default(cuid())
+  rentalId   String
+  minutesUsed Int
+  costUSD     Float
+  timestamp   DateTime @default(now())
+
+  rental      Rental   @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@index([rentalId, timestamp])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  userId          String
+  rentalId        String?       @unique
+  stripePaymentId String?       @unique
+  amountUSD       Float
+  status          PaymentStatus @default(PENDING)
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  user            User          @relation(fields: [userId], references: [id])
+  rental          Rental?
+
+  @@index([userId])
+  @@index([stripePaymentId])
+  @@index([status])
+}
+
+model SSHKey {
+  id          String   @id @default(cuid())
+  userId      String
+  rentalId    String   @unique
+  publicKey   String
+  privateKey  String   // Encrypted, deleted after download
+  fingerprint String
+  downloaded  Boolean  @default(false)
+  downloadedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([rentalId])
+  @@index([fingerprint])
+}
+
+model Payout {
+  id          String   @id @default(cuid())
+  hostId      String
+  amountUSD   Float
+  status      String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  stripePayoutId String?
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([hostId])
+  @@index([status])
+}

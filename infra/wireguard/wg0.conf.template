@@ -1,0 +1,10 @@
+[Interface]
+PrivateKey = {{PRIVATE_KEY}}
+Address = {{VPN_IP}}/24
+ListenPort = 51820
+
+[Peer]
+PublicKey = {{PLATFORM_PUBLIC_KEY}}
+Endpoint = {{PLATFORM_ENDPOINT}}:51820
+AllowedIPs = 10.0.0.0/24
+PersistentKeepalive = 25

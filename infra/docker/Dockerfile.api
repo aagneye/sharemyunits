@@ -1,0 +1,24 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY apps/api/package.json apps/api/package-lock.json* ./
+COPY package.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY apps/api ./apps/api
+COPY packages ./packages
+
+# Generate Prisma client
+RUN cd apps/api && npx prisma generate
+
+# Build
+RUN npm run build --workspace=apps/api
+
+EXPOSE 3001
+
+CMD ["node", "apps/api/dist/server.js"]
