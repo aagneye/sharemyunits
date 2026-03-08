@@ -9,24 +9,28 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 });
 
 export default async function webhookRoute(fastify: FastifyInstance) {
+  fastify.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' },
+    function (req, body, done) {
+      done(null, body);
+    }
+  );
+
   fastify.post('/webhook', async (request, reply) => {
     const sig = request.headers['stripe-signature'] as string;
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    const rawBody = request.body as Buffer;
 
     let event: Stripe.Event;
 
     try {
-      event = stripe.webhooks.constructEvent(
-        request.body as string,
-        sig,
-        webhookSecret
-      );
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
     } catch (err: any) {
       fastify.log.error(`Webhook signature verification failed: ${err.message}`);
       return reply.status(400).send({ error: `Webhook Error: ${err.message}` });
     }
 
-    // Handle the event
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const rentalId = session.metadata?.rentalId;
@@ -36,7 +40,6 @@ export default async function webhookRoute(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'Missing rentalId' });
       }
 
-      // Update payment status
       const payment = await prisma.payment.update({
         where: { rentalId },
         data: {
@@ -46,23 +49,18 @@ export default async function webhookRoute(fastify: FastifyInstance) {
         },
         include: {
           rental: {
-            include: {
-              gpu: true,
-              buyer: true,
-            },
+            include: { gpu: true, buyer: true },
           },
         },
       });
 
-      // Provision VM
-      const vm = await vmOrchestrator.provisionVM({
+      await vmOrchestrator.provisionVM({
         rentalId: payment.rental!.id,
         gpuId: payment.rental!.gpuId,
         gpuHostIP: payment.rental!.gpu.hostIP,
         proxmoxNode: payment.rental!.gpu.proxmoxNode,
       });
 
-      // Generate SSH keypair
       await sshKeyService.generateKeypair({
         userId: payment.userId,
         rentalId: payment.rentalId!,

@@ -1,27 +1,35 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { getSession } from 'next-auth/react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export class ApiClient {
-  private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('accessToken');
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
+  private async getAuthHeaders(): Promise<HeadersInit> {
+    try {
+      const session = await getSession();
+      const token = (session as any)?.accessToken;
+      return {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      };
+    } catch {
+      return { 'Content-Type': 'application/json' };
+    }
   }
 
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${API_URL}${endpoint}`;
+    const headers = await this.getAuthHeaders();
     const response = await fetch(url, {
       ...options,
       headers: {
-        ...this.getAuthHeaders(),
+        ...headers,
         ...options.headers,
       },
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || 'Request failed');
+      throw new Error(error.error || `Request failed with status ${response.status}`);
     }
 
     return response.json();
