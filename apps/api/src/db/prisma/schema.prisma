@@ -83,6 +83,7 @@ model GPU {
   // Relations
   host            User       @relation(fields: [hostId], references: [id], onDelete: Cascade)
   rentals         Rental[]
+  vms             VM[]
   metrics         GPUMetric[]
 
   @@index([hostId])
@@ -175,7 +176,7 @@ model Payment {
 
   // Relations
   user            User          @relation(fields: [userId], references: [id])
-  rental          Rental?
+  rental          Rental?       @relation(fields: [rentalId], references: [id])
 
   @@index([userId])
   @@index([stripePaymentId])

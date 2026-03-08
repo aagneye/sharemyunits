@@ -24,7 +24,7 @@ const server = Fastify({
 async function build() {
   // Plugins
   await server.register(cors, {
-    origin: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || true,
     credentials: true,
   });
 
@@ -81,7 +81,7 @@ async function build() {
 const start = async () => {
   try {
     await build();
-    const port = Number(process.env.API_PORT) || 3001;
+    const port = Number(process.env.API_PORT) || 8000;
     await server.listen({ port, host: '0.0.0.0' });
     console.log(`🚀 Server running on http://localhost:${port}`);
   } catch (err) {
